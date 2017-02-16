@@ -1,0 +1,196 @@
+Read in Ameriflux data:
+```{r, warning = FALSE}
+setwd("/Users/juliamarrs/Documents/Biogeoscience_Practicum/Ameriflux/")
+
+ameriflux <- list.files(pattern = "\\.csv")
+
+for (a in 1:length(ameriflux)) {
+  assign(paste0(substr(basename(ameriflux[a]), 5, 6), "_",
+                substr(basename(ameriflux[a]), 8, 10), "_",
+                substr(basename(ameriflux[a]), 17, 18), "_all"), 
+                read.csv(ameriflux[a], header = TRUE, sep = ",", skip = 2))
+}
+
+for (a in 1:length(ameriflux)) {
+  assign(paste0(substr(basename(ameriflux[a]), 5, 6), "_",
+                substr(basename(ameriflux[a]), 8, 10), "_",
+                substr(basename(ameriflux[a]), 17, 18)), 
+                read.csv(ameriflux[a], header = TRUE, sep = ",", skip = 2))
+}
+```
+
+** don't use gap-filled data and remove corresponding value from other variable when there is a missing value
+** only use days with 8 or more hours of good data -- make this an adjustable variable, though - we will probably mess around with this later!
+
+will eventually need nighttime averages, but respiration script might do this on its own
+
+Remove columns with just NA values (and then do na.omit at some point but need to know which columns we're going to end up needing - otherwise, end up omitting every row...):
+
+latent heat flux (evap) column (column name LE), net ecosystem carbon uptake (NEE) (column name NEE_PI), temp (soil = TS_1 and TS_2 and air = TA), VPD
+
+**this chunk will be changed completely now that we have a shortlist of the variables needed!**
+```{r}
+US_Bar_HH[US_Bar_HH == "-9999"] <- NA
+US_Bar_HH <- Filter(function(x)!all(is.na(x)), US_Bar_HH)
+#US_Bar_HH <- na.omit(US_Bar_HH)
+
+US_Ha1_HR[US_Ha1_HR == "-9999"] <- NA
+US_Ha1_HR <- Filter(function(x)!all(is.na(x)), US_Ha1_HR)
+#US_Ha1_HR <- na.omit(US_Ha1_HR)
+
+US_Ha2_HH[US_Ha2_HH == "-9999"] <- NA
+US_Ha2_HH <- Filter(function(x)!all(is.na(x)), US_Ha2_HH)
+#US_Ha2_HH <- na.omit(US_Ha2_HH)
+
+US_Ho1_HH[US_Ho1_HH == "-9999"] <- NA
+US_Ho1_HH <- Filter(function(x)!all(is.na(x)), US_Ho1_HH)
+#US_Ho1_HH <- na.omit(US_Ho1_HH)
+
+US_LPH_HH[US_LPH_HH == "-9999"] <- NA
+US_LPH_HH <- Filter(function(x)!all(is.na(x)), US_LPH_HH)
+#US_LPH_HH <- na.omit(US_LPH_HH)
+
+US_MMS_HR[US_MMS_HR == "-9999"] <- NA
+US_MMS_HR <- Filter(function(x)!all(is.na(x)), US_MMS_HR)
+#US_MMS_HR <- na.omit(US_MMS_HR)
+
+US_UMB_HH[US_UMB_HH == "-9999"] <- NA
+US_UMB_HH <- Filter(function(x)!all(is.na(x)), US_UMB_HH)
+#US_UMB_HH <- na.omit(US_UMB_HH)
+
+US_UMB_HR[US_UMB_HR == "-9999"] <- NA
+US_UMB_HR <- Filter(function(x)!all(is.na(x)), US_UMB_HR)
+#US_UMB_HR <- na.omit(US_UMB_HR)
+```
+
+make parameters for day/night threshold (20 W/m2), half-hours for "good" day (16), how many days count for a month (if instruments go out) (?), how many months for a season (?)
+
+```{r}
+day_threshold <- 20 # W m-2
+half_hours_day_threshold <- 16 # half hours
+hours_day_threshold <- 8 # hours
+days_month_threshold <- 20 # days
+months_season_threshold <- 2 # months
+```
+
+Creates friendly date time object from first column
+```{r}
+require(lubridate)
+
+Bar_HH_date_time <- as.vector(as.character(US_Bar_HH[,1]))
+Ha1_HR_date_time <- as.vector(as.character(US_Ha1_HR[,1]))
+Ha2_HH_date_time <- as.vector(as.character(US_Ha2_HH[,1]))
+Ho1_HH_date_time <- as.vector(as.character(US_Ho1_HH[,1]))
+LPH_HH_date_time <- as.vector(as.character(US_LPH_HH[,1]))
+MMS_HR_date_time <- as.vector(as.character(US_MMS_HR[,1]))
+UMB_HH_date_time <- as.vector(as.character(US_UMB_HH[,1]))
+UMB_HR_date_time <- as.vector(as.character(US_UMB_HR[,1]))
+
+l_Bar_HH <- length(US_Bar_HH[,1])
+l_Ha1_HR <- length(US_Ha1_HR[,1])
+l_Ha2_HH <- length(US_Ha2_HH[,1])
+l_Ho1_HH <- length(US_Ho1_HH[,1])
+l_LPH_HH <- length(US_LPH_HH[,1])
+l_MMS_HR <- length(US_MMS_HR[,1])
+l_UMB_HH <- length(US_UMB_HH[,1])
+l_UMB_HR <- length(US_UMB_HR[,1])
+
+Bar_HH_dates <- matrix(ncol = 1, nrow = l_Bar_HH, "NA")
+Ha1_HR_dates <- matrix(ncol = 1, nrow = l_Ha1_HR, "NA")
+Ha2_HH_dates <- matrix(ncol = 1, nrow = l_Ha2_HH, "NA")
+Ho1_HH_dates <- matrix(ncol = 1, nrow = l_Ho1_HH, "NA")
+LPH_HH_dates <- matrix(ncol = 1, nrow = l_LPH_HH, "NA")
+MMS_HR_dates <- matrix(ncol = 1, nrow = l_MMS_HR, "NA")
+UMB_HH_dates <- matrix(ncol = 1, nrow = l_UMB_HH, "NA")
+UMB_HR_dates <- matrix(ncol = 1, nrow = l_UMB_HR, "NA")
+
+format_date_time <- function(x) {
+  ymd_hm_dates <- ymd_hm(as.character(x))
+}
+
+Bar_HH_dates <- lapply(Bar_HH_date_time, format_date_time)
+Ha1_HR_dates <- lapply(Ha1_HR_date_time, format_date_time)
+Ha2_HH_dates <- lapply(Ha2_HH_date_time, format_date_time)
+Ho1_HH_dates <- lapply(Ho1_HH_date_time, format_date_time)
+LPH_HH_dates <- lapply(LPH_HH_date_time, format_date_time)
+MMS_HR_dates <- lapply(MMS_HR_date_time, format_date_time)
+UMB_HH_dates <- lapply(UMB_HH_date_time, format_date_time)
+UMB_HR_dates <- lapply(UMB_HR_date_time, format_date_time)
+Bar_HH_dates[1:2]
+```
+
+Get daylight hours for each DOY and site
+Will need latitude of each site (from Keenan et al. supplementary info)
+```{r}
+lat_Bar <- 44.06
+lat_Ha_LPH <- 42.54
+lat_Ho <- 45.20
+lat_MMS <- 39.32
+lat_UMB <- 45.56
+```
+
+```{r}
+require(geosphere)
+
+Bar_HH_daylight_hours <- matrix(ncol = 1, nrow = l_Bar_HH, "NA")
+Ha1_HR_daylight_hours <- matrix(ncol = 1, nrow = l_Ha1_HR, "NA")
+Ha2_HH_daylight_hours <- matrix(ncol = 1, nrow = l_Ha2_HH, "NA")
+Ho1_HH_daylight_hours <- matrix(ncol = 1, nrow = l_Ho1_HH, "NA")
+LPH_HH_daylight_hours <- matrix(ncol = 1, nrow = l_LPH_HH, "NA")
+MMS_HR_daylight_hours <- matrix(ncol = 1, nrow = l_MMS_HR, "NA")
+UMB_HH_daylight_hours <- matrix(ncol = 1, nrow = l_UMB_HH, "NA")
+UMB_HR_daylight_hours <- matrix(ncol = 1, nrow = l_UMB_HR, "NA")
+
+get_daylight_hours_Bar <- function(x) {
+  daylight_hours <- daylength(lat_Bar, substr(x, 1, 11))  
+}
+
+get_daylight_hours_Ha_LPH <- function(x) {
+  daylight_hours <- daylength(lat_Ha_LPH, substr(x, 1, 11))  
+}
+
+get_daylight_hours_Ho <- function(x) {
+  daylight_hours <- daylength(lat_Ho, substr(x, 1, 11))  
+}
+
+get_daylight_hours_MMS <- function(x) {
+  daylight_hours <- daylength(lat_MMS, substr(x, 1, 11))  
+}
+
+get_daylight_hours_UMB <- function(x) {
+  daylight_hours <- daylength(lat_UMB, substr(x, 1, 11))  
+}
+
+Bar_HH_daylight_hours <- lapply(Bar_HH_dates, get_daylight_hours_Bar)
+Ha1_HR_daylight_hours <- lapply(Ha1_HR_dates, get_daylight_hours_Ha_LPH)
+Ha2_HH_daylight_hours <- lapply(Ha2_HH_dates, get_daylight_hours_Ha_LPH)
+Ho1_HH_daylight_hours <- lapply(Ho1_HH_dates, get_daylight_hours_Ho)
+LPH_HH_daylight_hours <- lapply(LPH_HH_dates, get_daylight_hours_Ha_LPH)
+MMS_HR_daylight_hours <- lapply(MMS_HR_dates, get_daylight_hours_MMS)
+UMB_HH_daylight_hours <- lapply(UMB_HH_dates, get_daylight_hours_UMB)
+UMB_HR_daylight_hours <- lapply(UMB_HR_dates, get_daylight_hours_UMB)
+```
+Make a date-only column out of the date-time object - might update to get just month, just day, etc.
+```{r}
+Bar_HH_whole_date <- matrix(ncol = 1, nrow = l_Bar_HH, "NA")
+Ha1_HR_whole_date <- matrix(ncol = 1, nrow = l_Ha1_HR, "NA")
+Ha2_HH_whole_date <- matrix(ncol = 1, nrow = l_Ha2_HH, "NA")
+Ho1_HH_whole_date <- matrix(ncol = 1, nrow = l_Ho1_HH, "NA")
+LPH_HH_whole_date <- matrix(ncol = 1, nrow = l_LPH_HH, "NA")
+MMS_HR_whole_date <- matrix(ncol = 1, nrow = l_MMS_HR, "NA")
+UMB_HH_whole_date <- matrix(ncol = 1, nrow = l_UMB_HH, "NA")
+UMB_HR_whole_date <- matrix(ncol = 1, nrow = l_UMB_HR, "NA")
+
+get_date_only <- function(x) {
+  date_only <- substr(x, 1, 11)   
+}
+
+Bar_HH_date_only <- lapply(Bar_HH_dates, get_date_only)
+Ha1_HR_date_only <- lapply(Ha1_HR_dates, get_date_only)
+Ha2_HH_date_only <- lapply(Ha2_HH_dates, get_date_only)
+Ho1_HH_date_only <- lapply(Ho1_HH_dates, get_date_only)
+LPH_HH_date_only <- lapply(LPH_HH_dates, get_date_only)
+MMS_HR_date_only <- lapply(MMS_HR_dates, get_date_only)
+UMB_HH_date_only <- lapply(UMB_HH_dates, get_date_only)
+UMB_HR_date_only <- lapply(UMB_HR_dates, get_date_only)
+```
